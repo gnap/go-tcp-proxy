@@ -7,26 +7,30 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	proxy "github.com/jpillora/go-tcp-proxy"
 )
 
 var (
-	version = "0.0.0-src"
-	matchid = uint64(0)
-	connid  = uint64(0)
-	logger  proxy.ColorLogger
+	version   = "0.0.0-src"
+	matchid   = uint64(0)
+	connid    = uint64(0)
+	releaseId = uint64(0)
+	idleStart = time.Now()
+	logger    proxy.ColorLogger
 
-	localAddr   = flag.String("l", ":9999", "local address")
-	remoteAddr  = flag.String("r", "localhost:80", "remote address")
-	verbose     = flag.Bool("v", false, "display server actions")
-	veryverbose = flag.Bool("vv", false, "display server actions and all tcp data")
-	nagles      = flag.Bool("n", false, "disable nagles algorithm")
-	hex         = flag.Bool("h", false, "output hex")
-	colors      = flag.Bool("c", false, "output ansi colors")
-	unwrapTLS   = flag.Bool("unwrap-tls", false, "remote connection with TLS exposed unencrypted locally")
-	match       = flag.String("match", "", "match regex (in the form 'regex')")
-	replace     = flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
+	localAddr      = flag.String("l", ":9999", "local address")
+	remoteAddr     = flag.String("r", "localhost:80", "remote address")
+	verbose        = flag.Bool("v", false, "display server actions")
+	veryverbose    = flag.Bool("vv", false, "display server actions and all tcp data")
+	nagles         = flag.Bool("n", false, "disable nagles algorithm")
+	hex            = flag.Bool("h", false, "output hex")
+	colors         = flag.Bool("c", false, "output ansi colors")
+	maxIdleSeconds = flag.Int("q", 0, "max idle seconds before quit, 0 means forevert")
+	unwrapTLS      = flag.Bool("unwrap-tls", false, "remote connection with TLS exposed unencrypted locally")
+	match          = flag.String("match", "", "match regex (in the form 'regex')")
+	replace        = flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
 )
 
 func main() {
@@ -62,6 +66,21 @@ func main() {
 		*verbose = true
 	}
 
+	if *maxIdleSeconds > 0 {
+		go func() {
+			for {
+				if releaseId != connid {
+					idleStart = time.Now()
+				}
+				if time.Since(idleStart).Seconds() > float64(*maxIdleSeconds) {
+					logger.Warn("max idle %d seconds without connection, quiting", *maxIdleSeconds)
+					os.Exit(0)
+				}
+				time.Sleep(time.Second)
+			}
+		}()
+	}
+
 	for {
 		conn, err := listener.AcceptTCP()
 		if err != nil {
@@ -90,7 +109,10 @@ func main() {
 			Color:       *colors,
 		}
 
-		go p.Start()
+		go func() {
+			p.Start()
+			releaseId++
+		}()
 	}
 }
 

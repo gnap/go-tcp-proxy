@@ -90,6 +90,7 @@ func (p *Proxy) Start() {
 	//wait for close...
 	<-p.errsig
 	p.Log.Info("Closed (%d bytes sent, %d bytes recieved)", p.sentBytes, p.receivedBytes)
+
 }
 
 func (p *Proxy) err(s string, err error) {
